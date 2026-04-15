@@ -6,6 +6,7 @@
             <option value=""></option>
         </select>
     </form> -->
+    {{ volatility < 1 ? 'Прогнозирование может быть достаточно точным' : volatility > 3 ? 'Прогноз имеет умеренный риск' : 'Прогноз имеет высокий риск' }}
     <div class="line-chart">
         <Line v-if="dataLoaded" id="main-line" :data="chartData" />
     </div>
@@ -45,6 +46,7 @@ export default {
                 datasets: [],
             },
             dataLoaded: false,
+            volatility: null,
         };
     },
     methods: {
@@ -103,12 +105,14 @@ export default {
                     linearRegData.push(data[data.length - 1]);
                     let polynomialRegData = [...linearRegData];
                     let movingRegData = [...linearRegData];
+                    let ARIMAData = [...linearRegData];
+
                     linearRegData.push(...this.linearRegression(data));
 
                     polynomialRegData.push(
                         ...this.polynomialRegression(data, 2, 20),
                     );
-                    movingRegData.push(...this.movingLinearRegression(data))
+                    movingRegData.push(...this.movingLinearRegression(data));
 
                     this.chartData.datasets.push({
                         label: "linear regression",
@@ -127,6 +131,24 @@ export default {
                         data: movingRegData,
                         pointRadius: 3,
                         borderColor: "#000095",
+                    });
+                    this.chartData.datasets.push({
+                        label: "ARIMA 1",
+                        data: [...data, ...this.simpleArimaPredict(data).forecast],
+                        pointRadius: 3,
+                        borderColor: "#15D2E3",
+                    });
+                    this.chartData.datasets.push({
+                        label: "ARIMA 2",
+                        data: [...data, ...this.simpleArimaPredict(data).forecast],
+                        pointRadius: 3,
+                        borderColor: "#0F939F",
+                    });
+                    this.chartData.datasets.push({
+                        label: "ARIMA 3",
+                        data: [...data, ...this.simpleArimaPredict(data).forecast],
+                        pointRadius: 3,
+                        borderColor: "#0D7A84",
                     });
                 });
             this.dataLoaded = true;
@@ -284,6 +306,125 @@ export default {
 
             return forecasts;
         },
+        // Функция ARIMA(1,1,1) на чистом JS
+        forecastARIMA(prices, steps = 20) {
+            // 1. Дифференцируем ряд (d=1)
+            let diff = [];
+            for (let i = 1; i < prices.length; i++) {
+                diff.push(prices[i] - prices[i - 1]);
+            }
+
+            // 2. Находим коэффициент AR(1) через метод наименьших квадратов
+            // diff[t] = phi * diff[t-1] + error
+            let n = diff.length;
+            let sumX = 0,
+                sumY = 0,
+                sumXY = 0,
+                sumXX = 0;
+            for (let i = 1; i < n; i++) {
+                let x = diff[i - 1];
+                let y = diff[i];
+                sumX += x;
+                sumY += y;
+                sumXY += x * y;
+                sumXX += x * x;
+            }
+            let phi =
+                (sumXY - (sumX * sumY) / (n - 1)) /
+                (sumXX - (sumX * sumX) / (n - 1));
+
+            // 3. Находим MA(1) коэффициент theta через простой метод (автокорреляция)
+            let errors = [];
+            for (let i = 1; i < n; i++) {
+                errors.push(diff[i] - phi * diff[i - 1]);
+            }
+            // theta = корреляция diff[t] и errors[t-1]
+            let sumXY2 = 0,
+                sumXX2 = 0;
+            for (let i = 1; i < errors.length; i++) {
+                sumXY2 += diff[i] * errors[i - 1];
+                sumXX2 += errors[i - 1] ** 2;
+            }
+            let theta = sumXY2 / sumXX2;
+
+            // 4. Прогнозируем следующий diff
+            let lastDiff = diff[diff.length - 1];
+            let lastError = errors[errors.length - 1];
+            let forecast = [];
+            let lastPrice = prices[prices.length - 1];
+
+            for (let i = 0; i < steps; i++) {
+                let nextDiff = phi * lastDiff + theta * lastError; // ARMA(1,1)
+                let nextPrice = lastPrice + nextDiff; // Интегрируем обратно
+                forecast.push(nextPrice);
+
+                // Обновляем переменные
+                lastDiff = nextDiff;
+                lastError = nextDiff - phi * lastDiff; // простая ошибка
+                lastPrice = nextPrice;
+            }
+
+            return forecast;
+        },
+        simpleArimaPredict(data, steps = 20) {
+            if (data.length < 2)
+                return { forecast: [], volatility: 0, volatilityPct: 0 };
+
+            // 1. Считаем изменения (разницы)
+            const diffs = [];
+            for (let i = 1; i < data.length; i++) {
+                diffs.push(data[i] - data[i - 1]);
+            }
+
+            // 2. Расчет волатильности (Стандартное отклонение)
+            const n = diffs.length;
+            const avgDiff = diffs.reduce((a, b) => a + b, 0) / n;
+
+            // Сумма квадратов отклонений
+            const squareDiffs = diffs.map((d) => Math.pow(d - avgDiff, 2));
+            const avgSquareDiff = squareDiffs.reduce((a, b) => a + b, 0) / n;
+
+            // Итоговая волатильность (сигма)
+            const volatility = Math.sqrt(avgSquareDiff);
+
+            // Волатильность в процентах относительно последней цены
+            const lastPrice = data[data.length - 1];
+            const volatilityPct = (volatility / lastPrice) * 100;
+
+            // 3. Генерация прогноза (тот же алгоритм с шумом)
+            const forecast = [];
+            let currentPrice = lastPrice;
+            let lastDiff = diffs[diffs.length - 1];
+
+            const gaussianRandom = () => {
+                let u = Math.random(),
+                    v = Math.random();
+                return (
+                    Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v)
+                );
+            };
+
+            for (let i = 0; i < steps; i++) {
+                const noise = gaussianRandom() * volatility;
+                const nextDiff = avgDiff + (lastDiff - avgDiff) * 0.5 + noise;
+                currentPrice += nextDiff;
+                forecast.push(Number(currentPrice.toFixed(2)));
+                lastDiff = nextDiff;
+            }
+
+            this.volatility = volatilityPct
+
+            return {
+                forecast: forecast,
+                volatility: volatility.toFixed(2), // В единицах валюты
+                volatilityPct: volatilityPct.toFixed(2), // В процентах
+            };
+        },
+
+        // Пример использования
+        // let prices = [100, 102, 101, 105, 107, 110, 108, 112];
+        // let predicted = forecastARIMA(prices, 5);
+        // console.log(predicted);
     },
     mounted() {
         this.getAssets();
