@@ -1,12 +1,33 @@
 <template>
-    <Header />
-    <!-- <form action="" class="choose-assets">
-        <label for="assets" class="choose-asset__title"></label>
-        <select name="assets" id="assets" class="choose-asset__select">
-            <option value=""></option>
+    <Header
+        :activeShare="activeShare"
+        :shareList="shareList"
+        @handleShare="applyFilters($event)"
+    />
+    <div class="filters">
+        <div class="filters-methods">
+            <p>Методы:</p>
+            <div
+                class="filters-methods__method"
+                :class="{ active: method.active }"
+                @click="method.active = !method.active"
+                v-for="method in chartMethods"
+            >
+                {{ method.label }}
+            </div>
+        </div>
+        <select
+            name=""
+            id=""
+            class="filters-intervals select"
+            v-model="activeInterval"
+        >
+            <option :value="item.value" v-for="item in intervals">
+                {{ item.label }}
+            </option>
         </select>
-    </form> -->
-    {{ volatility < 1 ? 'Прогнозирование может быть достаточно точным' : volatility > 3 ? 'Прогноз имеет умеренный риск' : 'Прогноз имеет высокий риск' }}
+        <button class="btn" @click="applyFilters()">Применить</button>
+    </div>
     <div class="line-chart">
         <Line v-if="dataLoaded" id="main-line" :data="chartData" />
     </div>
@@ -47,6 +68,69 @@ export default {
             },
             dataLoaded: false,
             volatility: null,
+            chartMethods: [
+                {
+                    id: 1,
+                    label: "Линейная регр.",
+                    value: "linear",
+                    active: true,
+                },
+                {
+                    id: 2,
+                    label: "Полиномиальная регр.",
+                    value: "polynom",
+                    active: false,
+                },
+                {
+                    id: 3,
+                    label: "ARIMA",
+                    value: "arima",
+                    active: false,
+                },
+                {
+                    id: 4,
+                    label: "Скользящая линейная",
+                    value: "moving",
+                    active: false,
+                },
+            ],
+            intervals: [
+                {
+                    id: 1,
+                    label: "1д",
+                    value: "24",
+                },
+                {
+                    id: 2,
+                    label: "1ч",
+                    value: "60",
+                },
+            ],
+            activeInterval: "60",
+
+            activeShare: "SBER",
+            shareList: [
+                {
+                    id: 1,
+                    label: "СберБанк",
+                    value: "SBER",
+                },
+                {
+                    id: 2,
+                    label: "Аэрофлот",
+                    value: "AFLT",
+                },
+                {
+                    id: 3,
+                    label: "Норильский Никель",
+                    value: "GMKN",
+                },
+                {
+                    id: 4,
+                    label: "Газпром",
+                    value: "GAZP",
+                },
+            ],
         };
     },
     methods: {
@@ -67,11 +151,18 @@ export default {
                 this.chartData.labels.push(dateI);
             }
         },
-        async getAssets() {
+        async getAssets(share) {
             this.dataLoaded = false;
+            let date = new Date();
+            date.setDate(
+                date.getDate() - (this.activeInterval == "24" ? 50 : 9),
+            );
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDay() + 1).padStart(2, "0");
             await axios
                 .get(
-                    "https://iss.moex.com/iss/engines/stock/markets/shares/securities/SBER/candles.json?from=2026-02-01&interval=24",
+                    `https://iss.moex.com/iss/engines/stock/markets/shares/securities/${this.activeShare}/candles.json?from=${year}-${month}-${day}&interval=${this.activeInterval}`,
                 )
                 .then((response) => {
                     console.log(response.data);
@@ -101,55 +192,96 @@ export default {
                     return closeCosts;
                 })
                 .then((data) => {
-                    let linearRegData = Array(data.length - 1).fill(null);
-                    linearRegData.push(data[data.length - 1]);
-                    let polynomialRegData = [...linearRegData];
-                    let movingRegData = [...linearRegData];
-                    let ARIMAData = [...linearRegData];
+                    this.chartMethods.forEach((method) => {
+                        if (method.active) {
+                            if (method.value == "linear") {
+                                let linearRegData = Array();
+                                linearRegData.push(
+                                    ...this.linearRegression(data),
+                                );
+                                this.chartData.datasets.push({
+                                    label: method.label,
+                                    data: linearRegData,
+                                    pointRadius: 3,
+                                    borderColor: "#969696",
+                                });
+                            }
+                            if (method.value == "polynom") {
+                                let polynomialRegData = Array(
+                                    data.length - 1,
+                                ).fill(null);
+                                polynomialRegData.push(data[data.length - 1]);
+                                polynomialRegData.push(
+                                    ...this.polynomialRegression(data, 2, 20),
+                                );
+                                this.chartData.datasets.push({
+                                    label: method.label,
+                                    data: polynomialRegData,
+                                    pointRadius: 3,
+                                    borderColor: "#009500",
+                                });
+                            }
+                            if (method.value == "arima") {
+                                this.chartData.datasets.push({
+                                    label: "ARIMA 1",
+                                    data: [
+                                        ...data,
+                                        ...this.simpleArimaPredict(data)
+                                            .forecast,
+                                    ],
+                                    pointRadius: 3,
+                                    borderColor: "#15D2E3",
+                                });
+                                this.chartData.datasets.push({
+                                    label: "ARIMA 2",
+                                    data: [
+                                        ...data,
+                                        ...this.simpleArimaPredict(data)
+                                            .forecast,
+                                    ],
+                                    pointRadius: 3,
+                                    borderColor: "#0F939F",
+                                });
+                                this.chartData.datasets.push({
+                                    label: "ARIMA 3",
+                                    data: [
+                                        ...data,
+                                        ...this.simpleArimaPredict(data)
+                                            .forecast,
+                                    ],
+                                    pointRadius: 3,
+                                    borderColor: "#0D7A84",
+                                });
+                            }
+                            if (method.value == "moving") {
+                                let movingRegData = Array(data.length - 1).fill(
+                                    null,
+                                );
+                                movingRegData.push(data[data.length - 1]);
+                                movingRegData.push(
+                                    ...this.movingLinearRegression(data),
+                                );
+                                this.chartData.datasets.push({
+                                    label: method.label,
+                                    data: movingRegData,
+                                    pointRadius: 3,
+                                    borderColor: "#000095",
+                                });
+                            }
+                        }
+                    });
+                    console.log(this.chartData);
 
-                    linearRegData.push(...this.linearRegression(data));
+                    // let polynomialRegData = [...linearRegData];
 
-                    polynomialRegData.push(
-                        ...this.polynomialRegression(data, 2, 20),
-                    );
-                    movingRegData.push(...this.movingLinearRegression(data));
+                    // let movingRegData = [...linearRegData];
 
-                    this.chartData.datasets.push({
-                        label: "linear regression",
-                        data: linearRegData,
-                        pointRadius: 3,
-                        borderColor: "#969696",
-                    });
-                    this.chartData.datasets.push({
-                        label: "polynomal regression",
-                        data: polynomialRegData,
-                        pointRadius: 3,
-                        borderColor: "#009500",
-                    });
-                    this.chartData.datasets.push({
-                        label: "moving regression",
-                        data: movingRegData,
-                        pointRadius: 3,
-                        borderColor: "#000095",
-                    });
-                    this.chartData.datasets.push({
-                        label: "ARIMA 1",
-                        data: [...data, ...this.simpleArimaPredict(data).forecast],
-                        pointRadius: 3,
-                        borderColor: "#15D2E3",
-                    });
-                    this.chartData.datasets.push({
-                        label: "ARIMA 2",
-                        data: [...data, ...this.simpleArimaPredict(data).forecast],
-                        pointRadius: 3,
-                        borderColor: "#0F939F",
-                    });
-                    this.chartData.datasets.push({
-                        label: "ARIMA 3",
-                        data: [...data, ...this.simpleArimaPredict(data).forecast],
-                        pointRadius: 3,
-                        borderColor: "#0D7A84",
-                    });
+                    // let ARIMAData = [...linearRegData];
+
+                    // polynomialRegData.push(
+                    //     ...this.polynomialRegression(data, 2, 20),
+                    // );
+                    // movingRegData.push(...this.movingLinearRegression(data));
                 });
             this.dataLoaded = true;
         },
@@ -172,7 +304,7 @@ export default {
             // const forecast = a + b * y.length
             // console.log(forecast)
             let forecasts = [];
-            for (let i = 0; i < steps; i++) {
+            for (let i = 0; i < n + steps; i++) {
                 const t = n + i;
                 forecasts.push(a + b * t);
             }
@@ -306,66 +438,6 @@ export default {
 
             return forecasts;
         },
-        // Функция ARIMA(1,1,1) на чистом JS
-        forecastARIMA(prices, steps = 20) {
-            // 1. Дифференцируем ряд (d=1)
-            let diff = [];
-            for (let i = 1; i < prices.length; i++) {
-                diff.push(prices[i] - prices[i - 1]);
-            }
-
-            // 2. Находим коэффициент AR(1) через метод наименьших квадратов
-            // diff[t] = phi * diff[t-1] + error
-            let n = diff.length;
-            let sumX = 0,
-                sumY = 0,
-                sumXY = 0,
-                sumXX = 0;
-            for (let i = 1; i < n; i++) {
-                let x = diff[i - 1];
-                let y = diff[i];
-                sumX += x;
-                sumY += y;
-                sumXY += x * y;
-                sumXX += x * x;
-            }
-            let phi =
-                (sumXY - (sumX * sumY) / (n - 1)) /
-                (sumXX - (sumX * sumX) / (n - 1));
-
-            // 3. Находим MA(1) коэффициент theta через простой метод (автокорреляция)
-            let errors = [];
-            for (let i = 1; i < n; i++) {
-                errors.push(diff[i] - phi * diff[i - 1]);
-            }
-            // theta = корреляция diff[t] и errors[t-1]
-            let sumXY2 = 0,
-                sumXX2 = 0;
-            for (let i = 1; i < errors.length; i++) {
-                sumXY2 += diff[i] * errors[i - 1];
-                sumXX2 += errors[i - 1] ** 2;
-            }
-            let theta = sumXY2 / sumXX2;
-
-            // 4. Прогнозируем следующий diff
-            let lastDiff = diff[diff.length - 1];
-            let lastError = errors[errors.length - 1];
-            let forecast = [];
-            let lastPrice = prices[prices.length - 1];
-
-            for (let i = 0; i < steps; i++) {
-                let nextDiff = phi * lastDiff + theta * lastError; // ARMA(1,1)
-                let nextPrice = lastPrice + nextDiff; // Интегрируем обратно
-                forecast.push(nextPrice);
-
-                // Обновляем переменные
-                lastDiff = nextDiff;
-                lastError = nextDiff - phi * lastDiff; // простая ошибка
-                lastPrice = nextPrice;
-            }
-
-            return forecast;
-        },
         simpleArimaPredict(data, steps = 20) {
             if (data.length < 2)
                 return { forecast: [], volatility: 0, volatilityPct: 0 };
@@ -412,7 +484,7 @@ export default {
                 lastDiff = nextDiff;
             }
 
-            this.volatility = volatilityPct
+            this.volatility = volatilityPct;
 
             return {
                 forecast: forecast,
@@ -421,13 +493,19 @@ export default {
             };
         },
 
-        // Пример использования
-        // let prices = [100, 102, 101, 105, 107, 110, 108, 112];
-        // let predicted = forecastARIMA(prices, 5);
-        // console.log(predicted);
+        applyFilters(share) {
+            if (share) {
+                this.activeShare = share;
+            }
+            this.chartData = {
+                label: [],
+                datasets: [],
+            };
+            this.getAssets(share);
+        },
     },
     mounted() {
-        this.getAssets();
+        this.getAssets(this.activeShare);
     },
 };
 </script>
@@ -436,5 +514,37 @@ export default {
 .line-chart {
     width: 90%;
     margin: 0 auto;
+}
+.filters {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 20px 0;
+    gap: 10px;
+    &-methods {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        p {
+            color: var(--color-text-scnd);
+        }
+        &__method {
+            padding: 5px 15px;
+            border: 1px solid var(--color-border);
+            border-radius: 50vi;
+            transition: all 0.1s ease-in;
+            cursor: pointer;
+            &.active {
+                background: var(--color-light-blue);
+                color: var(--color-blue);
+                border-color: var(--color-blue);
+            }
+        }
+    }
+    &-intervals {
+        margin-left: auto;
+    }
 }
 </style>

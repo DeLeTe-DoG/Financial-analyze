@@ -10,6 +10,8 @@
     --color-bg: #EFEFEF
     --color-bg-darker: #377FA9
     --color-text-reverse: #fff
+    --color-light-blue: #E6F1FB
+    --color-blue: #185FA5
 
 
 *
@@ -19,3 +21,31 @@
     font-family: 'GolosText'
     font-weight: 500
     color: var(--color-text)
+
+body
+    background: var(--color-page)
+
+#app
+    padding: 20px
+
+.content-wrapper
+    padding: 20px
+    background: #fff
+    border-radius: 16px
+
+.btn, .select
+    background: transparent
+    border: 1px solid var(--color-border)
+    height: 40px
+    padding: 0 20px
+    display: flex
+    align-items: center
+    justify-content: center
+    gap: 10px
+    font-size: 16px
+    border-radius: 10px
+    outline: none
+    min-width: 100px
+
+.select
+    padding: 0 10px
