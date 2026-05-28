@@ -12,6 +12,11 @@
     --color-text-reverse: #fff
     --color-light-blue: #E6F1FB
     --color-blue: #185FA5
+    --color-green: #12B981
+    --color-green-light: #EAF3DE
+    --color-red: #FF5834
+    --color-red-light: #efcbcb
+    --color-yellow: #F2B20E
 
 
 *
@@ -33,6 +38,14 @@ body
     background: #fff
     border-radius: 16px
 
+.main
+    display: grid
+    grid-template-columns: 1fr 25%
+    gap: 20px
+    &-column
+        display: flex
+        flex-direction: column
+        gap: 20px
 .btn, .select
     background: transparent
     border: 1px solid var(--color-border)

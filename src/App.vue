@@ -28,14 +28,22 @@
         </select>
         <button class="btn" @click="applyFilters()">Применить</button>
     </div>
-    <div class="line-chart">
-        <Line v-if="dataLoaded" id="main-line" :data="chartData" />
-    </div>
+    <main class="main">
+        <div class="main-column">
+            <div class="line-chart content-wrapper">
+                <Line v-if="dataLoaded" id="main-line" :data="chartData" />
+            </div>
+            <DivergenceTable :predictions="predictionTrends" />
+        </div>
+        <Sidebar :volatility="volatility" :predictions="predictionTrends" />
+    </main>
 </template>
 
 <script>
 import Header from "./components/Header.vue";
 import axios from "axios";
+import Sidebar from "./components/Sidebar.vue";
+import DivergenceTable from "./components/DivergenceTable.vue";
 
 import { Line } from "vue-chartjs";
 import {
@@ -59,7 +67,7 @@ ChartJS.register(
 );
 
 export default {
-    components: { Header, Line },
+    components: { Header, Line, Sidebar, DivergenceTable },
     data() {
         return {
             chartData: {
@@ -131,6 +139,13 @@ export default {
                     value: "GAZP",
                 },
             ],
+            predictionTrends: [
+                // {
+                //     method: '...',
+                //     value: '...',
+                //     change: '...'
+                // },
+            ],
         };
     },
     methods: {
@@ -155,11 +170,12 @@ export default {
             this.dataLoaded = false;
             let date = new Date();
             date.setDate(
-                date.getDate() - (this.activeInterval == "24" ? 50 : 9),
+                date.getDate() - (this.activeInterval == "24" ? 60 : 10),
             );
+            console.log(date);
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, "0");
-            const day = String(date.getDay() + 1).padStart(2, "0");
+            const day = String(date.getUTCDate()).padStart(2, "0");
             await axios
                 .get(
                     `https://iss.moex.com/iss/engines/stock/markets/shares/securities/${this.activeShare}/candles.json?from=${year}-${month}-${day}&interval=${this.activeInterval}`,
@@ -270,18 +286,29 @@ export default {
                             }
                         }
                     });
+                    this.simpleArimaPredict(data);
                     console.log(this.chartData);
 
-                    // let polynomialRegData = [...linearRegData];
-
-                    // let movingRegData = [...linearRegData];
-
-                    // let ARIMAData = [...linearRegData];
-
-                    // polynomialRegData.push(
-                    //     ...this.polynomialRegression(data, 2, 20),
-                    // );
-                    // movingRegData.push(...this.movingLinearRegression(data));
+                    this.predictionTrends = this.chartData.datasets.filter(
+                        (item) => item.label != "history data",
+                    );
+                    this.predictionTrends = this.predictionTrends.map(
+                        (item) => {
+                            const costNow = data[data.length - 1];
+                            const change =
+                                (-(costNow - item.data[item.data.length - 1]) /
+                                    costNow) *
+                                100;
+                            return {
+                                method: item.label,
+                                value1: item.data[item.data.length - 20],
+                                value10: item.data[item.data.length - 10],
+                                value20: item.data[item.data.length - 1],
+                                change: change,
+                            };
+                        },
+                    );
+                    console.log(this.predictionTrends);
                 });
             this.dataLoaded = true;
         },
@@ -484,7 +511,8 @@ export default {
                 lastDiff = nextDiff;
             }
 
-            this.volatility = volatilityPct;
+            this.volatility = (volatilityPct * 100).toFixed(1);
+            console.log(volatilityPct);
 
             return {
                 forecast: forecast,
@@ -512,7 +540,7 @@ export default {
 
 <style lang="scss" scoped>
 .line-chart {
-    width: 90%;
+    width: 100%;
     margin: 0 auto;
 }
 .filters {
