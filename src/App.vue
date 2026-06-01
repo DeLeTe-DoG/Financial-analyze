@@ -3,6 +3,7 @@
         :activeShare="activeShare"
         :shareList="shareList"
         @handleShare="applyFilters($event)"
+        @handleModal="$refs.info_modal.showModal()"
     />
     <div class="filters">
         <div class="filters-methods">
@@ -37,6 +38,7 @@
         </div>
         <Sidebar :volatility="volatility" :predictions="predictionTrends" />
     </main>
+    <InfoModal ref="info_modal" />
 </template>
 
 <script>
@@ -44,6 +46,7 @@ import Header from "./components/Header.vue";
 import axios from "axios";
 import Sidebar from "./components/Sidebar.vue";
 import DivergenceTable from "./components/DivergenceTable.vue";
+import InfoModal from "./components/InfoModal.vue";
 
 import { Line } from "vue-chartjs";
 import {
@@ -67,7 +70,7 @@ ChartJS.register(
 );
 
 export default {
-    components: { Header, Line, Sidebar, DivergenceTable },
+    components: { Header, Line, Sidebar, DivergenceTable, InfoModal },
     data() {
         return {
             chartData: {
@@ -197,7 +200,7 @@ export default {
                     console.log(closeCosts);
                     console.log(xAxis);
                     this.chartData.datasets.push({
-                        label: "history data",
+                        label: "Исторические данные",
                         data: closeCosts,
                         borderColor: "#f50000",
                         pointRadius: 3,
@@ -290,7 +293,7 @@ export default {
                     console.log(this.chartData);
 
                     this.predictionTrends = this.chartData.datasets.filter(
-                        (item) => item.label != "history data",
+                        (item) => item.label != "Исторические данные",
                     );
                     this.predictionTrends = this.predictionTrends.map(
                         (item) => {

@@ -12,7 +12,7 @@
                 {{ item.label }}
             </option>
         </select>
-        <button class="btn">
+        <button class="btn" @click="$emit('handleModal')">
             О методах
             <Icon variant="info" />
         </button>
@@ -28,7 +28,7 @@ export default {
         shareList: {type: Array},
         activeShare: {type: String},
     },
-    emits: ["handleShare"],
+    emits: ["handleShare", "handleModal"],
     components: { Icon },
     methods: {
         // async getShares() {
